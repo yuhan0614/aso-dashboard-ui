@@ -65,6 +65,7 @@
   .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
   .chart-head h3 { margin-bottom: 0; }
   .chart-wrap { position: relative; height: 220px; }
+  .chart-wrap.tall { height: 300px; }
 
   .table-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 20px; }
   .table-header { padding: 14px 20px; border-bottom: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -430,7 +431,17 @@ const PIE_PERCENT_LABELS = {
   }
 };
 
-const PIE_COLORS = ['#c8102e','#fa8c16','#52c41a','#1677ff','#722ed1','#13c2c2','#fadb14','#eb2f96'];
+const PIE_COLORS = ['#c8102e','#fa8c16','#52c41a','#1677ff','#722ed1','#13c2c2','#fadb14','#eb2f96',
+  '#8c6d1f','#5b8ff9','#9254de','#73d13d'];
+
+// Display name for legends: campaign names all open with the year and carry the budget
+// (2026_0908_0924_$45,455_CPV$0.8_直式), which makes truncated labels identical. Drop the
+// year and the $budget segment so the distinguishing part survives: 0908_0924_CPV$0.8_直式.
+function shortCampName(name) {
+  const parts = (name || '—').split('_').filter((p, i) => !(i === 0 && /^20\d\d$/.test(p)) && !p.startsWith('$'));
+  return parts.join('_') || name;
+}
+const clip = (t, n = 30) => t.length > n ? t.slice(0, n) + '…' : t;
 
 function clearPreset() {
   document.querySelectorAll('.controls .preset-btn').forEach(b => b.classList.remove('active'));
@@ -715,7 +726,7 @@ function renderViewSkeleton(v) {
             v.metrics.map(m => `<option value="${m}" ${m === v.metric ? 'selected' : ''}>花費 × ${META_METRICS[m]}</option>`).join('')
           }</select>
         </div>
-        <div class="chart-wrap"><canvas id="${k}-trendChart"></canvas></div>
+        <div class="chart-wrap tall"><canvas id="${k}-trendChart"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>📊 活動花費佔比</h3>
@@ -773,24 +784,67 @@ function destroyChart(v, name) {
   if (v.charts[name]) { v.charts[name].destroy(); delete v.charts[name]; }
 }
 
+// Daily spend as one stacked bar segment per campaign (colors follow the 活動花費佔比 pie,
+// which uses the same spend-descending order), plus metric line(s) on the right axis.
+function stackedSpendChart(canvas, campRows, nameKey, dates, lines) {
+  const byCamp = {};
+  for (const r of campRows) {
+    const n = r[nameKey] || '—';
+    (byCamp[n] = byCamp[n] || { total: 0, days: {} });
+    byCamp[n].total += r.spend || 0;
+    byCamp[n].days[r.date_start] = (byCamp[n].days[r.date_start] || 0) + (r.spend || 0);
+  }
+  const camps = Object.entries(byCamp).sort((a, b) => b[1].total - a[1].total);
+  const bars = camps.map(([name, c], i) => ({
+    type: 'bar', label: shortCampName(name), data: dates.map(d => c.days[d] || 0),
+    backgroundColor: PIE_COLORS[i % PIE_COLORS.length] + 'cc', borderWidth: 0,
+    yAxisID: 'y', stack: 'spend', order: 2,
+  }));
+  const lineColors = ['#1a1a2e', '#722ed1'];
+  const lineSets = lines.map((l, i) => ({
+    type: 'line', label: l.label, data: l.data, borderColor: lineColors[i], backgroundColor: lineColors[i],
+    borderWidth: 2, pointRadius: 2, tension: 0.3, yAxisID: 'y3', order: 1,
+  }));
+  return new Chart(canvas, {
+    data: { labels: dates, datasets: [...bars, ...lineSets] },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins: {
+        legend: { display:true, position:'bottom', labels:{ font:{size:10}, boxWidth:10, padding:6,
+          generateLabels: ch => Chart.defaults.plugins.legend.labels.generateLabels(ch)
+            .map(l => ({ ...l, text: clip(l.text) })) } },
+        tooltip: {
+          filter: item => item.dataset.type === 'line' || item.parsed.y > 0,
+          callbacks: {
+            label: ctx => {
+              const n = ctx.dataset.label || '';
+              return `${clip(n, 36)}: ${fmtTooltipValue(ctx.parsed.y, ctx.dataset.type === 'line' ? n : '花費')}`;
+            },
+            footer: items => {
+              const total = items.filter(i => i.dataset.type !== 'line').reduce((s, i) => s + i.parsed.y, 0);
+              return `花費合計: ${fmtTooltipValue(total, '花費')}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x:  { stacked:true, grid:{display:false}, ticks:{font:{size:10},maxTicksLimit:10} },
+        y:  { stacked:true, position:'left',  beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:fmtAxisMoney,font:{size:10}} },
+        y3: { position:'right', beginAtZero:true, grid:{display:false}, ticks:{precision:0,font:{size:10}} },
+      }
+    }
+  });
+}
+
 function renderTrendChart(v) {
   destroyChart(v, 'trend');
   const canvas = el(v, 'trendChart');
   if (!canvas) return;
   const rows = [...v.trend].sort((a,b)=>a.date_start<b.date_start?-1:1);
-  v.charts.trend = new Chart(canvas, {
-    data: { labels: rows.map(r => r.date_start), datasets: [
-      { type:'bar',  label:'花費', data: rows.map(r=>r.spend||0), backgroundColor:'rgba(200,16,46,0.22)', borderColor:'#c8102e', borderWidth:1, yAxisID:'y', borderRadius:3 },
-      { type:'line', label: META_METRICS[v.metric], data: rows.map(r=>r[v.metric]||0), borderColor:'#fa8c16', borderWidth:2, pointRadius:2, tension:0.3, yAxisID:'y3' },
-    ]},
-    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true,position:'top',align:'end',labels:{font:{size:11},boxWidth:12}}, tooltip:{callbacks:comboTooltipCallbacks()}},
-      scales: {
-        x:  { grid:{display:false}, ticks:{font:{size:10},maxTicksLimit:10} },
-        y:  { position:'left',  beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:fmtAxisMoney,font:{size:10}} },
-        y3: { position:'right', beginAtZero:true, grid:{display:false}, ticks:{precision:0,font:{size:10}} },
-      }
-    }
-  });
+  const dates = rows.map(r => r.date_start);
+  // Fall back to one account-level bar if the campaign-daily fetch failed.
+  const campRows = v.campTrend.length ? v.campTrend : rows.map(r => ({ ...r, campaign_name: '花費' }));
+  v.charts.trend = stackedSpendChart(canvas, campRows, 'campaign_name', dates,
+    [{ label: META_METRICS[v.metric], data: rows.map(r => r[v.metric] || 0) }]);
 }
 
 // 活動 selector inside an objective tab — only shown when the tab has 2+ campaign groups.
@@ -829,7 +883,7 @@ function renderCampaignPie(v) {
   const sorted = [...v.camps].sort((a,b)=>(b.spend||0)-(a.spend||0));
   v.charts.pie = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels: sorted.map(r=>(r.campaign_name||'—').slice(0,22)), datasets:[{data:sorted.map(r=>r.spend),backgroundColor:PIE_COLORS,borderWidth:2,borderColor:'white'}] },
+    data: { labels: sorted.map(r=>clip(shortCampName(r.campaign_name))), datasets:[{data:sorted.map(r=>r.spend),backgroundColor:PIE_COLORS,borderWidth:2,borderColor:'white'}] },
     plugins: [PIE_PERCENT_LABELS],
     options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}, tooltip:{callbacks:moneyDoughnutTooltipCallbacks()}} }
   });
@@ -1136,7 +1190,7 @@ function renderGadsSkeleton() {
     <div class="charts-row">
       <div class="chart-card">
         <h3>📅 每日趨勢</h3>
-        <div class="chart-wrap"><canvas id="gadsTrendChart"></canvas></div>
+        <div class="chart-wrap tall"><canvas id="gadsTrendChart"></canvas></div>
       </div>
       <div class="chart-card">
         <h3>📊 活動花費佔比</h3>
@@ -1347,27 +1401,16 @@ function renderGadsCharts(agg) {
   if (gadsPieChart) gadsPieChart.destroy();
   gadsPieChart = new Chart(document.getElementById('gadsPieChart'), {
     type: 'doughnut',
-    data: { labels: agg.map(r => r.name.slice(0,22)), datasets: [{ data: agg.map(r => r.spend || 0), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: 'white' }] },
+    data: { labels: agg.map(r => clip(shortCampName(r.name))), datasets: [{ data: agg.map(r => r.spend || 0), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: 'white' }] },
     plugins: [PIE_PERCENT_LABELS],
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 6 } }, tooltip: { callbacks: moneyDoughnutTooltipCallbacks() } } }
   });
 
   if (gadsTrendChart) gadsTrendChart.destroy();
   const daily = aggregateGoogleByPeriod(lastGadsRaw, 'day');
-  gadsTrendChart = new Chart(document.getElementById('gadsTrendChart'), {
-    data: { labels: daily.map(r => r.date_start), datasets: [
-      { type: 'bar',  label: '花費', data: daily.map(r => r.spend || 0), backgroundColor: 'rgba(200,16,46,0.22)', borderColor: '#c8102e', borderWidth: 1, yAxisID: 'y', borderRadius: 3 },
-      { type: 'line', label: '點擊', data: daily.map(r => r.clicks || 0), borderColor: '#722ed1', borderWidth: 2, pointRadius: 2, tension: 0.3, yAxisID: 'y3' },
-      { type: 'line', label: '名單', data: daily.map(r => r.conversions || 0), borderColor: '#fa8c16', borderWidth: 2, pointRadius: 2, tension: 0.3, yAxisID: 'y3' },
-    ]},
-    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 11 }, boxWidth: 12 } }, tooltip: { callbacks: comboTooltipCallbacks() } },
-      scales: {
-        x:  { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
-        y:  { position: 'left',  beginAtZero: true, grid: { color: '#f0f2f5' }, ticks: { callback: fmtAxisMoney, font: { size: 10 } } },
-        y3: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { precision: 0, font: { size: 10 } } },
-      }
-    }
-  });
+  gadsTrendChart = stackedSpendChart(document.getElementById('gadsTrendChart'), lastGadsRaw, 'name',
+    daily.map(r => r.date_start),
+    [{ label: '點擊', data: daily.map(r => r.clicks || 0) }, { label: '名單', data: daily.map(r => r.conversions || 0) }]);
 }
 
 function setGadsGranularity(g) {
