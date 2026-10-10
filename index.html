@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A.S.O 阿瘦皮鞋 成效儀表板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; font-size: 14px; }
+
+  .top-nav { position: sticky; top: 0; z-index: 50; }
+  .header { background: linear-gradient(135deg, #c8102e 0%, #8f0b21 100%); color: white; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-badge { background: rgba(255,255,255,0.2); border-radius: 8px; padding: 6px 14px; font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+  .header-title h1 { font-size: 20px; font-weight: 700; }
+  .header-title p { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+  .header-right { font-size: 12px; opacity: 0.85; text-align: right; line-height: 1.7; }
+
+  .controls { background: white; border-bottom: 1px solid #e4e6ea; padding: 12px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .preset-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset-btn { padding: 5px 14px; border: 1.5px solid #e4e6ea; border-radius: 20px; background: white; font-size: 12px; cursor: pointer; color: #555; transition: all 0.15s; font-weight: 500; }
+  .preset-btn:hover { background: #fff1f0; border-color: #c8102e; color: #c8102e; }
+  .preset-btn.active { background: #c8102e; color: white; border-color: #c8102e; }
+  .date-inputs { display: flex; align-items: center; gap: 6px; }
+  .date-inputs input { padding: 5px 10px; border: 1.5px solid #e4e6ea; border-radius: 8px; font-size: 12px; outline: none; }
+  .date-inputs input:focus { border-color: #c8102e; }
+  .fetch-btn { padding: 7px 18px; background: #c8102e; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .fetch-btn:hover { background: #8f0b21; }
+  .fetch-btn:disabled { background: #aaa; cursor: not-allowed; }
+  .status-text { font-size: 12px; color: #888; }
+  .status-text.ok { color: #52c41a; }
+  .status-text.err { color: #f5222d; }
+
+  .tabs { background: white; border-bottom: 1px solid #e4e6ea; padding: 0 24px; display: flex; gap: 0; }
+  .tab-btn { padding: 13px 20px; font-size: 14px; font-weight: 500; color: #888; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; }
+  .tab-btn:hover { color: #c8102e; }
+  .tab-btn.active { color: #c8102e; border-bottom-color: #c8102e; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .main { padding: 20px 24px; max-width: 1500px; margin: 0 auto; }
+
+  .section-label { font-size: 12px; font-weight: 600; color: #888; margin: 0 0 8px 2px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .sc { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .sc .lbl { font-size: 11px; color: #65676b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .sc .val { font-size: 22px; font-weight: 700; }
+  .sc .sub { font-size: 11px; color: #999; margin-top: 3px; }
+  .sc .delta { font-size: 12px; font-weight: 600; margin-top: 4px; }
+  .sc .delta.up { color: #52c41a; }
+  .sc .delta.down { color: #f5222d; }
+  .sc .delta.flat { color: #999; font-weight: 500; }
+  .c-red .val { color: #c8102e; }
+  .c-orange .val { color: #fa8c16; }
+  .c-purple .val { color: #722ed1; }
+  .c-teal .val { color: #13c2c2; }
+  .c-pink .val { color: #eb2f96; }
+  .c-green .val { color: #52c41a; }
+
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .charts-row-rev { grid-template-columns: 1fr 2fr; }
+  .chart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .chart-card h3 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 14px; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .chart-head h3 { margin-bottom: 0; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  .table-card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); overflow: hidden; margin-bottom: 20px; }
+  .table-header { padding: 14px 20px; border-bottom: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .table-header h3 { font-size: 15px; font-weight: 600; }
+  .table-header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .filter-select { padding: 5px 10px; border: 1.5px solid #e4e6ea; border-radius: 8px; font-size: 12px; outline: none; color: #333; background: white; max-width: 320px; }
+  .filter-select:focus { border-color: #c8102e; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f7f8fa; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #65676b; padding: 16px 10px; text-align: right; white-space: normal; line-height: 1.4; vertical-align: bottom; min-width: 80px; border-bottom: 1px solid #e4e6ea; }
+  th:first-child { text-align: left; min-width: 200px; }
+  td { padding: 10px 14px; text-align: right; border-bottom: 1px solid #f5f5f5; font-size: 13px; white-space: nowrap; }
+  td:first-child { text-align: left; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fff1f0; }
+  .na { color: #ccc; }
+  .spend-bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .spend-bar { height: 5px; border-radius: 3px; background: #c8102e; opacity: 0.55; min-width: 2px; }
+  .cell-name { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .cell-name.wrap { max-width: 420px; white-space: normal; word-break: break-all; line-height: 1.4; }
+  .cell-sub { font-size: 11px; color: #999; font-weight: 400; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; margin-top: 2px; }
+  .type-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; }
+  .type-lead { background: #fff1f0; color: #c8102e; }
+  .type-view { background: #f9f0ff; color: #722ed1; }
+  .type-traffic { background: #e6fffb; color: #08979c; }
+  .type-reach { background: #fff7e6; color: #d46b08; }
+  .type-other { background: #f5f5f5; color: #888; }
+
+  th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: inherit; }
+  th:first-child { background: #f7f8fa; z-index: 3; }
+  td:first-child { background: white; }
+  tr:hover td:first-child { background: #fff1f0; }
+
+  @media (max-width: 760px) {
+    .header, .controls, .tabs { padding-left: 16px; padding-right: 16px; }
+    .main { padding: 16px; }
+    .charts-row, .charts-row-rev { grid-template-columns: 1fr; }
+    .header-right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-nav">
+<div class="header">
+  <div class="header-left">
+    <div class="header-badge">A.S.O</div>
+    <div class="header-title">
+      <h1>阿瘦皮鞋 成效儀表板</h1>
+      <p>Meta 帳戶 1844604356070474 · Google Ads 379-483-9864 · TWD</p>
+    </div>
+  </div>
+  <div class="header-right">
+    最後更新：<span id="lastUpdate">—</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('meta', this)">📊 Meta 成效</button>
+  <button class="tab-btn" onclick="switchTab('gads', this)">🔍 Google Ads</button>
+</div>
+
+<div class="controls">
+  <div class="preset-btns">
+    <button class="preset-btn" onclick="applyPreset(1)">今天</button>
+    <button class="preset-btn" onclick="applyPresetYesterday()">昨天</button>
+    <button class="preset-btn" id="preset7" onclick="applyPreset(7)">近7天</button>
+    <button class="preset-btn" onclick="applyPreset(30)">近30天</button>
+    <button class="preset-btn" onclick="applyPreset(90)">近90天</button>
+    <button class="preset-btn" onclick="applyPresetMonth()">本月</button>
+  </div>
+  <div class="date-inputs">
+    <input type="date" id="dateFrom" onchange="clearPreset(); refreshAll(false)">
+    <span style="color:#bbb">至</span>
+    <input type="date" id="dateTo" onchange="clearPreset(); refreshAll(false)">
+  </div>
+  <button class="fetch-btn" id="fetchBtn" onclick="refreshAll(true)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
+    更新資料
+  </button>
+  <span class="status-text" id="statusText"></span>
+</div>
+</div>
+
+<div class="main">
+  <div class="tab-panel active" id="tab-meta-panel">
+    <div id="tab-perf">
+      <div style="text-align:center;padding:60px;color:#aaa;">點擊「更新資料」開始載入</div>
+    </div>
+  </div>
+  <div class="tab-panel" id="tab-gads-panel">
+    <div id="tab-gads">
+      <div style="text-align:center;padding:60px;color:#aaa;">點擊「更新資料」開始載入</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'https://aso-api.fly.dev';
+const ACCOUNT_ID = '1844604356070474';
+let trendChart, pieChart, ageChart, ageComboChart, genderChart, genderComboChart;
+let lastFilteredTrend = [];
+let lastAccount = null;     // account-level, whole range — the only source of de-duplicated reach
+let dateGranularity = 'day';
+let lastCampData = [];      // campaign-level, whole range — 活動成效 table + filter options
+let lastCampTrend = [];     // campaign-level, daily — drives 日期成效 when a campaign is selected
+let lastAdsets = [];        // raw adset rows (carry campaign_name) — 受眾表現 filter source
+let lastDemo = { age: [], gender: [] };
+let dateCampFilter = '';
+let adsetCampFilter = '';
+let campTypeFilter = '';
+let metaMetric = 'leads';   // line series paired with 花費 on the trend + demographic combo charts
+let gadsTrendChart, gadsPieChart, gadsAgeChart, gadsAgeComboChart, gadsGenderChart, gadsGenderComboChart;
+let gadsDateGranularity = 'day';
+let lastGadsRaw = [];
+let lastGadsHeadlineRaw = [];
+let lastGadsDescriptionRaw = [];
+const GOOGLE_AUTO_REFRESH_MS = 15 * 60 * 1000; // 15分鐘輪詢一次確保拿到新資料
+
+const META_METRICS = {
+  leads:       '名單',
+  thruplay:    'ThruPlay',
+  link_clicks: '連結點擊',
+  impressions: '曝光',
+};
+
+// This account mixes buying types, so blended CPL/CPV (all spend ÷ leads) would be badly
+// inflated. Campaign names carry the buying type (…_CPL$250, …_CPV$0.8, …), which is used
+// to scope CPL/CPV to the campaigns actually buying that result.
+const CAMP_TYPES = {
+  lead:    '名單',
+  view:    '觀看',
+  traffic: '流量',
+  reach:   '曝光',
+  other:   '其他',
+};
+function campType(name) {
+  const n = name || '';
+  if (/CPL/i.test(n)) return 'lead';
+  if (/CPV/i.test(n)) return 'view';
+  if (/CPC/i.test(n)) return 'traffic';
+  if (/CPM/i.test(n)) return 'reach';
+  return 'other';
+}
+function typeTag(name) {
+  const t = campType(name);
+  return `<span class="type-tag type-${t}">${CAMP_TYPES[t]}</span>`;
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name + '-panel').classList.add('active');
+  // Charts drawn while their tab was display:none have no size — re-measure once visible.
+  Object.values(Chart.instances).forEach(c => c.resize());
+}
+
+// Spend axis ticks: "NT$12K" for large values, plain NT$ for small accounts (NT$1,333/週
+// would otherwise print every tick as NT$1K).
+function fmtAxisMoney(v) {
+  return Math.abs(v) >= 10000 ? 'NT$' + Math.round(v / 1000) + 'K' : 'NT$' + Math.round(v).toLocaleString('zh-TW');
+}
+
+async function refreshAll(force = false) {
+  const btn = document.getElementById('fetchBtn');
+  const status = document.getElementById('statusText');
+  btn.disabled = true;
+  status.textContent = '載入中…'; status.className = 'status-text';
+  try {
+    await Promise.all([fetchData(force), fetchGadsData(force)]);
+    status.textContent = '✓ 完成'; status.className = 'status-text ok';
+  } catch(e) {
+    status.textContent = `❌ ${e.message}`; status.className = 'status-text err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function toYMD(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// Immediately-preceding period of the same length, used for period-over-period (+/-) comparison.
+function prevPeriodRange(since, until) {
+  const s = new Date(since + 'T00:00:00');
+  const u = new Date(until + 'T00:00:00');
+  const days = Math.round((u - s) / 86400000) + 1;
+  const prevUntil = new Date(s); prevUntil.setDate(prevUntil.getDate() - 1);
+  const prevSince = new Date(prevUntil); prevSince.setDate(prevSince.getDate() - (days - 1));
+  return { since: toYMD(prevSince), until: toYMD(prevUntil) };
+}
+
+// Sums the given numeric fields across rows — used to total both the current and previous period.
+function sumFields(rows, fields) {
+  const total = {};
+  fields.forEach(f => total[f] = 0);
+  for (const r of rows) fields.forEach(f => total[f] += (r[f] || 0));
+  return total;
+}
+
+// Renders a small "+/-X.X%" line vs. the previous period. `invert` marks cost-per-x metrics
+// (CPL/CPV/CPC/CPM) where a decrease is the good direction, so green/red flip accordingly.
+function deltaHtml(curr, prev, invert = false) {
+  if (prev == null || !isFinite(prev) || prev === 0 || curr == null || !isFinite(curr)) return '';
+  const pct = (curr - prev) / Math.abs(prev) * 100;
+  if (!isFinite(pct)) return '';
+  const flat = Math.abs(pct) < 0.05;
+  const good = invert ? pct < 0 : pct > 0;
+  const cls = flat ? 'flat' : (good ? 'up' : 'down');
+  const sign = pct > 0 ? '+' : '';
+  return `<div class="delta ${cls}">${sign}${pct.toFixed(1)}% <span style="font-weight:400;color:#bbb;">前期</span></div>`;
+}
+
+// Shared Chart.js tooltip formatter — rounds every value to a whole number (no decimals) and
+// prefixes NT$ for money-type series (spend/cost-per-x labels).
+function fmtTooltipValue(value, label) {
+  const n = Math.round(value || 0).toLocaleString('zh-TW');
+  const isMoney = /花費|營收|CPA|CPL|CPV|CPC|CPM|CPLC/.test(label || '');
+  return isMoney ? `NT$${n}` : n;
+}
+function comboTooltipCallbacks() {
+  return { label: (ctx) => `${ctx.dataset.label || ''}: ${fmtTooltipValue(ctx.parsed.y, ctx.dataset.label)}` };
+}
+function moneyDoughnutTooltipCallbacks() {
+  return { label: (ctx) => `${ctx.label || ''}: ${fmtTooltipValue(ctx.parsed, '花費')}` };
+}
+
+// Draws a white "%"-of-total label centered on each slice of a doughnut/pie chart.
+// Opted into per-chart via `plugins: [PIE_PERCENT_LABELS]` — not applied globally.
+const PIE_PERCENT_LABELS = {
+  id: 'piePercentLabels',
+  afterDatasetsDraw(chart) {
+    const meta = chart.getDatasetMeta(0);
+    const data = chart.data.datasets[0]?.data || [];
+    const total = data.reduce((s, v) => s + (v || 0), 0);
+    if (total <= 0 || !meta?.data?.length) return;
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    meta.data.forEach((arc, i) => {
+      const pct = (data[i] || 0) / total * 100;
+      if (pct < 4) return; // too thin a slice to fit readable text
+      const pos = arc.tooltipPosition();
+      ctx.fillText(Math.round(pct) + '%', pos.x, pos.y);
+    });
+    ctx.restore();
+  }
+};
+
+const PIE_COLORS = ['#c8102e','#fa8c16','#52c41a','#1677ff','#722ed1','#13c2c2','#fadb14','#eb2f96'];
+
+function clearPreset() {
+  document.querySelectorAll('.controls .preset-btn').forEach(b => b.classList.remove('active'));
+}
+function applyPreset(days) {
+  const to = new Date(), from = new Date();
+  from.setDate(to.getDate() - days + 1);
+  document.getElementById('dateFrom').value = toYMD(from);
+  document.getElementById('dateTo').value = toYMD(to);
+  clearPreset(); event.target.classList.add('active');
+  refreshAll(false);
+}
+function applyPresetYesterday() {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  document.getElementById('dateFrom').value = toYMD(d);
+  document.getElementById('dateTo').value = toYMD(d);
+  clearPreset(); event.target.classList.add('active');
+  refreshAll(false);
+}
+function applyPresetMonth() {
+  const now = new Date();
+  document.getElementById('dateFrom').value = toYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+  document.getElementById('dateTo').value = toYMD(now);
+  clearPreset(); event.target.classList.add('active');
+  refreshAll(false);
+}
+(function() {
+  const to = new Date(), from = new Date();
+  from.setDate(to.getDate() - 6);
+  document.getElementById('dateFrom').value = toYMD(from);
+  document.getElementById('dateTo').value = toYMD(to);
+  document.getElementById('preset7').classList.add('active');
+  refreshAll(false);
+  setInterval(() => fetchGadsData(true), GOOGLE_AUTO_REFRESH_MS);
+})();
+
+function cacheGet(key) {
+  try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e) { return null; }
+}
+function cacheSet(key, val) {
+  try { sessionStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+}
+async function cachedFetchJson(url, force) {
+  if (!force) {
+    const cached = cacheGet('asoCache:' + url);
+    if (cached) return cached;
+  }
+  const res = await fetch(force ? url + '&force=true' : url);
+  const json = await res.json();
+  cacheSet('asoCache:' + url, json);
+  return json;
+}
+
+function showSectionError(wrapId, e) {
+  const el = document.getElementById(wrapId);
+  if (el) el.innerHTML = `<div style="text-align:center;padding:40px;color:#f5222d;">載入失敗：${e.message}</div>`;
+}
+
+async function fetchData(force = false) {
+  const since = document.getElementById('dateFrom').value;
+  const until = document.getElementById('dateTo').value;
+
+  renderSkeleton();
+
+  const base = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}`;
+  const acctP   = cachedFetchJson(`${base}&level=account`, force);
+  const campP   = cachedFetchJson(`${base}&level=campaign`, force);
+  const trendP  = cachedFetchJson(`${base}&level=account&time_increment=daily`, force);
+  const campTrendP = cachedFetchJson(`${base}&level=campaign&time_increment=daily`, force).catch(() => ({ data: [] }));
+  const adsetP  = cachedFetchJson(`${base}&level=adset`, force);
+  const ageP    = cachedFetchJson(`${base}&level=account&breakdowns=age`, force);
+  const genderP = cachedFetchJson(`${base}&level=account&breakdowns=gender`, force);
+
+  const prev = prevPeriodRange(since, until);
+  const prevBase = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${prev.since}&until=${prev.until}`;
+  const prevAcctP = cachedFetchJson(`${prevBase}&level=account`, force).catch(() => ({ data: [] }));
+  const prevCampP = cachedFetchJson(`${prevBase}&level=campaign`, force).catch(() => ({ data: [] }));
+
+  // Progressive rendering: each section paints as soon as its own fetch resolves,
+  // instead of the whole page waiting on the slowest call.
+  adsetP.then(j => renderAudience(j.data || [])).catch(e => showSectionError('adsetTableWrap', e));
+  ageP.then(j => { lastDemo.age = j.data || []; renderDemographic('age'); }).catch(e => showSectionError('ageTableWrap', e));
+  genderP.then(j => { lastDemo.gender = j.data || []; renderDemographic('gender'); }).catch(e => showSectionError('genderTableWrap', e));
+
+  const [acctJson, campJson, trendJson, prevAcctJson, prevCampJson, campTrendJson] =
+    await Promise.all([acctP, campP, trendP, prevAcctP, prevCampP, campTrendP]);
+  const campData  = campJson.data || [];
+  lastCampData  = campData;
+  lastCampTrend = (campTrendJson.data || []).filter(r => r.date_start >= since && r.date_start <= until);
+  lastAccount = (acctJson.data || [])[0] || emptyRow();
+  const prevAccount = (prevAcctJson.data || [])[0] || emptyRow();
+
+  dateCampFilter = populateCampFilter('dateCampFilter', dateCampFilter, campData);
+  renderCore(lastAccount, campData, trendJson.data || [], since, until, prevAccount, prevCampJson.data || []);
+  renderCampaignTable();
+  renderCampaignPie();
+
+  const updatedAt = campJson.updated || new Date().toLocaleString('zh-TW');
+  document.getElementById('lastUpdate').textContent = updatedAt + (campJson.cached ? '（快取）' : '');
+}
+
+function fmtN(n, d=0) { if (n == null || isNaN(n)) return '<span class="na">—</span>'; return (+n).toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function fmtM(n) { if (!n && n !== 0) return '<span class="na">—</span>'; return 'NT$'+Math.round(n).toLocaleString('zh-TW'); }
+function fmtM2(n) { if (!n) return '<span class="na">—</span>'; return 'NT$'+(+n).toFixed(2); }
+function fmtP(n) { if (n == null) return '<span class="na">—</span>'; return (+n).toFixed(2)+'%'; }
+function fmtCost(n) { return n > 0 ? fmtM(n) : '<span class="na">—</span>'; }
+
+// Additive fields only — reach/frequency are NOT summable across rows (the same person shows
+// up in several campaigns/days), so totals take reach from the account-level row instead.
+const SUM_FIELDS = ['spend','impressions','link_clicks','landing_page_view','post_engagement',
+  'video_2s','video_3s','thruplay','video_p25','video_p50','video_p75','video_p100','leads'];
+
+function emptyRow() { const r = {}; SUM_FIELDS.forEach(f => r[f] = 0); r.reach = 0; return r; }
+
+// Recomputes every ratio metric from the summed counts, so rows/totals never mix definitions.
+function derive(g) {
+  return { ...g,
+    ctr:  g.impressions > 0 ? g.link_clicks / g.impressions * 100 : 0,
+    cplc: g.link_clicks > 0 ? g.spend / g.link_clicks : 0,
+    cpm:  g.impressions > 0 ? g.spend / g.impressions * 1000 : 0,
+    cpv:  g.thruplay > 0 ? g.spend / g.thruplay : 0,
+    cpl:  g.leads > 0 ? g.spend / g.leads : 0,
+    frequency: g.reach > 0 ? g.impressions / g.reach : 0,
+  };
+}
+
+// CPL over lead-buying campaigns only, CPV over view-buying campaigns only.
+function scopedCosts(camps) {
+  const lead = sumFields(camps.filter(r => campType(r.campaign_name) === 'lead'), ['spend','leads']);
+  const view = sumFields(camps.filter(r => campType(r.campaign_name) === 'view'), ['spend','thruplay']);
+  return {
+    leadSpend: lead.spend, leadCount: lead.leads,
+    cpl: lead.leads > 0 ? lead.spend / lead.leads : 0,
+    viewSpend: view.spend, viewCount: view.thruplay,
+    cpv: view.thruplay > 0 ? view.spend / view.thruplay : 0,
+  };
+}
+
+function loadingPlaceholder() {
+  return `<div style="text-align:center;padding:40px;color:#aaa;">載入中…</div>`;
+}
+function loadingCards(n) {
+  return Array.from({length:n}).map(()=>`<div class="sc"><div class="lbl">—</div><div class="val" style="color:#ddd">…</div></div>`).join('');
+}
+
+function metricSelectHtml() {
+  return `<select class="filter-select" onchange="setMetaMetric(this.value)">${
+    Object.entries(META_METRICS).map(([k, l]) => `<option value="${k}" ${k === metaMetric ? 'selected' : ''}>花費 × ${l}</option>`).join('')
+  }</select>`;
+}
+
+function renderSkeleton() {
+  document.getElementById('tab-perf').innerHTML = `
+    <div class="section-label">整體成效</div>
+    <div class="summary-grid" id="summaryGrid">${loadingCards(8)}</div>
+    <div class="section-label">影片與互動</div>
+    <div class="summary-grid" id="videoGrid">${loadingCards(8)}</div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-head">
+          <h3>📅 每日趨勢</h3>
+          ${metricSelectHtml()}
+        </div>
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>📊 活動花費佔比</h3>
+        <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>📅 日期成效</h3>
+        <div class="table-header-right">
+          <select class="filter-select" id="dateCampFilter" onchange="setDateCampFilter(this.value)"><option value="">所有廣告活動</option></select>
+          <div class="preset-btns" id="dateGranBtns">
+            <button class="preset-btn ${dateGranularity==='day'?'active':''}" onclick="setGranularity('day')">日</button>
+            <button class="preset-btn ${dateGranularity==='week'?'active':''}" onclick="setGranularity('week')">週</button>
+            <button class="preset-btn ${dateGranularity==='month'?'active':''}" onclick="setGranularity('month')">月</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap" id="dateTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>🎯 活動成效（依廣告活動）</h3>
+        <div class="table-header-right">
+          <select class="filter-select" id="campTypeFilter" onchange="setCampTypeFilter(this.value)">
+            <option value="">所有類型</option>
+            ${Object.entries(CAMP_TYPES).map(([k, l]) => `<option value="${k}" ${k === campTypeFilter ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <span id="campCount" style="font-size:12px;color:#aaa;"></span>
+        </div>
+      </div>
+      <div class="table-wrap" id="campTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>👥 受眾表現（依廣告群組）</h3>
+        <div class="table-header-right">
+          <select class="filter-select" id="adsetCampFilter" onchange="setAdsetCampFilter(this.value)"><option value="">所有廣告活動</option></select>
+          <span id="adsetCount" style="font-size:12px;color:#aaa;"></span>
+        </div>
+      </div>
+      <div class="table-wrap" id="adsetTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="charts-row charts-row-rev">
+      <div class="chart-card">
+        <h3>🎂 花費分佈（年齡）</h3>
+        <div class="chart-wrap"><canvas id="ageChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3 id="ageComboTitle">📊 花費／${META_METRICS[metaMetric]}（年齡）</h3>
+        <div class="chart-wrap"><canvas id="ageComboChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>🎂 年齡分析</h3></div>
+      <div class="table-wrap" id="ageTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="charts-row charts-row-rev">
+      <div class="chart-card">
+        <h3>🚻 花費分佈（性別）</h3>
+        <div class="chart-wrap"><canvas id="genderChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3 id="genderComboTitle">📊 花費／${META_METRICS[metaMetric]}（性別）</h3>
+        <div class="chart-wrap"><canvas id="genderComboChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>🚻 性別分析</h3></div>
+      <div class="table-wrap" id="genderTableWrap">${loadingPlaceholder()}</div>
+    </div>`;
+}
+
+function renderCore(acct, camps, trend, since, until, prevAcct, prevCamps) {
+  const t = derive(acct), p = derive(prevAcct);
+  const sc = scopedCosts(camps), psc = scopedCosts(prevCamps);
+  const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
+
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="sc c-red"><div class="lbl">花費</div><div class="val">${fmtM(t.spend)}</div><div class="sub">${since} ～ ${until}</div>${deltaHtml(t.spend, p.spend)}</div>
+    <div class="sc"><div class="lbl">曝光</div><div class="val">${(t.impressions/10000).toFixed(1)}萬</div><div class="sub">${t.impressions.toLocaleString()}</div>${deltaHtml(t.impressions, p.impressions)}</div>
+    <div class="sc c-orange"><div class="lbl">觸及人數</div><div class="val">${(t.reach/10000).toFixed(1)}萬</div><div class="sub">頻率 ${t.frequency.toFixed(2)}</div>${deltaHtml(t.reach, p.reach)}</div>
+    <div class="sc"><div class="lbl">CPM</div><div class="val">${fmtM(t.cpm)}</div><div class="sub">每千次曝光成本</div>${deltaHtml(t.cpm, p.cpm, true)}</div>
+    <div class="sc c-purple"><div class="lbl">連結點擊</div><div class="val">${t.link_clicks.toLocaleString()}</div><div class="sub">CTR ${fmtP(t.ctr)}</div>${deltaHtml(t.link_clicks, p.link_clicks)}</div>
+    <div class="sc"><div class="lbl">CPC</div><div class="val">${fmtM(t.cplc)}</div><div class="sub">花費 / 連結點擊</div>${deltaHtml(t.cplc, p.cplc, true)}</div>
+    <div class="sc c-teal"><div class="lbl">名單</div><div class="val">${Math.round(t.leads).toLocaleString()}</div><div class="sub">Leadbutton 像素事件</div>${deltaHtml(t.leads, p.leads)}</div>
+    <div class="sc"><div class="lbl">CPL（名單型活動）</div><div class="val">${fmtCost(sc.cpl)}</div><div class="sub">${fmtM(sc.leadSpend)} / ${Math.round(sc.leadCount)} 筆</div>${deltaHtml(sc.cpl, psc.cpl, true)}</div>`;
+
+  document.getElementById('videoGrid').innerHTML = `
+    <div class="sc c-pink"><div class="lbl">ThruPlay</div><div class="val">${Math.round(t.thruplay).toLocaleString()}</div><div class="sub">看完或看滿 15 秒</div>${deltaHtml(t.thruplay, p.thruplay)}</div>
+    <div class="sc"><div class="lbl">CPV（觀看型活動）</div><div class="val">${fmtM2(sc.cpv)}</div><div class="sub">${fmtM(sc.viewSpend)} / ${Math.round(sc.viewCount).toLocaleString()} 次</div>${deltaHtml(sc.cpv, psc.cpv, true)}</div>
+    <div class="sc c-pink"><div class="lbl">2 秒連續觀看</div><div class="val">${Math.round(t.video_2s).toLocaleString()}</div>${deltaHtml(t.video_2s, p.video_2s)}</div>
+    <div class="sc"><div class="lbl">影片觀看 25%</div><div class="val">${Math.round(t.video_p25).toLocaleString()}</div><div class="sub">2 秒觀看的 ${pct(t.video_p25, t.video_2s)}</div></div>
+    <div class="sc"><div class="lbl">影片觀看 50%</div><div class="val">${Math.round(t.video_p50).toLocaleString()}</div><div class="sub">2 秒觀看的 ${pct(t.video_p50, t.video_2s)}</div></div>
+    <div class="sc"><div class="lbl">影片觀看 100%</div><div class="val">${Math.round(t.video_p100).toLocaleString()}</div><div class="sub">2 秒觀看的 ${pct(t.video_p100, t.video_2s)}</div></div>
+    <div class="sc c-green"><div class="lbl">到達頁瀏覽</div><div class="val">${Math.round(t.landing_page_view).toLocaleString()}</div><div class="sub">連結點擊的 ${pct(t.landing_page_view, t.link_clicks)}</div>${deltaHtml(t.landing_page_view, p.landing_page_view)}</div>
+    <div class="sc"><div class="lbl">貼文互動</div><div class="val">${Math.round(t.post_engagement).toLocaleString()}</div>${deltaHtml(t.post_engagement, p.post_engagement)}</div>`;
+
+  lastFilteredTrend = trend.filter(r => r.date_start >= since && r.date_start <= until);
+  renderDateTable();
+  renderTrendChart();
+}
+
+function renderTrendChart() {
+  if (trendChart) trendChart.destroy();
+  const el = document.getElementById('trendChart');
+  if (!el) return;
+  const rows = [...lastFilteredTrend].sort((a,b)=>a.date_start<b.date_start?-1:1);
+  const label = META_METRICS[metaMetric];
+  trendChart = new Chart(el, {
+    data: { labels: rows.map(r => r.date_start), datasets: [
+      { type:'bar',  label:'花費', data: rows.map(r=>r.spend||0), backgroundColor:'rgba(200,16,46,0.22)', borderColor:'#c8102e', borderWidth:1, yAxisID:'y', borderRadius:3 },
+      { type:'line', label, data: rows.map(r=>r[metaMetric]||0), borderColor:'#fa8c16', borderWidth:2, pointRadius:2, tension:0.3, yAxisID:'y3' },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false}, plugins:{legend:{display:true,position:'top',align:'end',labels:{font:{size:11},boxWidth:12}}, tooltip:{callbacks:comboTooltipCallbacks()}},
+      scales: {
+        x:  { grid:{display:false}, ticks:{font:{size:10},maxTicksLimit:10} },
+        y:  { position:'left',  beginAtZero:true, grid:{color:'#f0f2f5'}, ticks:{callback:fmtAxisMoney,font:{size:10}} },
+        y3: { position:'right', beginAtZero:true, grid:{display:false}, ticks:{precision:0,font:{size:10}} },
+      }
+    }
+  });
+}
+
+function setMetaMetric(v) {
+  metaMetric = v;
+  renderTrendChart();
+  ['age','gender'].forEach(k => {
+    const h = document.getElementById(k + 'ComboTitle');
+    if (h) h.textContent = `📊 花費／${META_METRICS[metaMetric]}（${k === 'age' ? '年齡' : '性別'}）`;
+    renderDemographic(k);
+  });
+}
+
+function renderCampaignPie() {
+  if (pieChart) pieChart.destroy();
+  const el = document.getElementById('pieChart');
+  if (!el) return;
+  const sorted = [...lastCampData].sort((a,b)=>(b.spend||0)-(a.spend||0));
+  pieChart = new Chart(el, {
+    type: 'doughnut',
+    data: { labels: sorted.map(r=>(r.campaign_name||'—').slice(0,22)), datasets:[{data:sorted.map(r=>r.spend),backgroundColor:PIE_COLORS,borderWidth:2,borderColor:'white'}] },
+    plugins: [PIE_PERCENT_LABELS],
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}, tooltip:{callbacks:moneyDoughnutTooltipCallbacks()}} }
+  });
+}
+
+// Fills a campaign <select> from the given rows' campaign_name values, keeping `current`
+// selected if it still exists. Returns the effective selection ('' if it vanished).
+function populateCampFilter(selectId, current, rows) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return current;
+  const names = [...new Set(rows.map(r => r.campaign_name).filter(Boolean))].sort();
+  const effective = names.includes(current) ? current : '';
+  sel.innerHTML = `<option value="">所有廣告活動</option>` +
+    names.map(n => `<option value="${n}" ${n === effective ? 'selected' : ''}>${n}</option>`).join('');
+  return effective;
+}
+
+function setDateCampFilter(v)  { dateCampFilter = v;  renderDateTable(); }
+function setAdsetCampFilter(v) { adsetCampFilter = v; renderAdsetView(); }
+function setCampTypeFilter(v)  { campTypeFilter = v;  renderCampaignTable(); }
+
+function renderAudience(adsets) {
+  lastAdsets = adsets;
+  adsetCampFilter = populateCampFilter('adsetCampFilter', adsetCampFilter, adsets);
+  renderAdsetView();
+}
+
+function renderAdsetView() {
+  // Adset names (TA1 興趣-保健品受衆 …) are reused across lead and view campaigns, so rows
+  // stay per-adset rather than merged by name — merging would blend different buying types.
+  const scoped = adsetCampFilter ? lastAdsets.filter(r => r.campaign_name === adsetCampFilter) : lastAdsets;
+  const countEl = document.getElementById('adsetCount');
+  if (countEl) countEl.textContent = `${scoped.length} 個廣告群組`;
+  renderAdsetTable(scoped.map(derive));
+}
+
+function aggregateByPeriod(rows, granularity) {
+  if (granularity === 'day') {
+    return [...rows].sort((a,b)=>a.date_start<b.date_start?-1:1).map(r => ({ ...derive(r), label: r.date_start }));
+  }
+  const map = {};
+  for (const r of rows) {
+    const d = new Date(r.date_start + 'T00:00:00');
+    let key, label;
+    if (granularity === 'week') {
+      const day = d.getDay();
+      const monday = new Date(d); monday.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      key = toYMD(monday);
+      label = `${toYMD(monday).slice(5)} ~ ${toYMD(sunday).slice(5)}`;
+    } else {
+      key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      label = key;
+    }
+    if (!map[key]) { map[key] = { label, date_start: key }; SUM_FIELDS.forEach(f => map[key][f] = 0); }
+    SUM_FIELDS.forEach(f => map[key][f] += (r[f] || 0));
+  }
+  return Object.keys(map).sort().map(k => derive(map[k]));
+}
+
+function setGranularity(g) {
+  dateGranularity = g;
+  document.querySelectorAll('#dateGranBtns .preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderDateTable();
+}
+
+// Count + cost columns shared by every Meta table. `withCosts` adds CPV/CPL, which are only
+// meaningful per campaign/adset (a blended day/age row mixes buying types).
+function metaHead(first, { withReach = true, withCosts = true, withShare = false } = {}) {
+  return `<th>${first}</th><th>花費</th>${withShare ? '<th>佔比</th>' : ''}<th>曝光</th>
+    ${withReach ? '<th>觸及</th><th>頻率</th>' : ''}<th>CPM</th><th>連結<br>點擊</th><th>CTR</th><th>CPC</th>
+    <th>ThruPlay</th>${withCosts ? '<th>CPV</th>' : ''}<th>名單</th>${withCosts ? '<th>CPL</th>' : ''}`;
+}
+function metaCells(r, { withReach = true, withCosts = true } = {}) {
+  return `<td>${fmtM(r.spend)}</td><td>${fmtN(r.impressions)}</td>
+    ${withReach ? `<td>${fmtN(r.reach)}</td><td>${fmtN(r.frequency, 2)}</td>` : ''}
+    <td>${fmtM(r.cpm)}</td><td>${fmtN(r.link_clicks)}</td><td>${fmtP(r.ctr)}</td><td>${fmtCost(r.cplc)}</td>
+    <td>${fmtN(r.thruplay)}</td>${withCosts ? `<td>${fmtM2(r.cpv)}</td>` : ''}
+    <td>${fmtN(r.leads)}</td>${withCosts ? `<td>${fmtCost(r.cpl)}</td>` : ''}`;
+}
+const TOTAL_ROW_STYLE = 'background:#fff7f7;font-weight:700;border-top:2px solid #f0d0d4;';
+
+function renderDateTable() {
+  const wrap = document.getElementById('dateTableWrap');
+  if (!wrap || !lastAccount) return;
+  // Unfiltered → account-level daily rows (matches the summary cards exactly).
+  // Filtered → that campaign's daily rows; there CPV/CPL are meaningful again.
+  let rows = lastFilteredTrend, total = derive(lastAccount);
+  const opts = { withReach: false, withCosts: !!dateCampFilter };
+  if (dateCampFilter) {
+    rows = lastCampTrend.filter(r => r.campaign_name === dateCampFilter);
+    total = derive(sumFields(rows, SUM_FIELDS));
+  }
+  const periods = aggregateByPeriod(rows, dateGranularity);
+
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>${metaHead('日期', opts)}</tr></thead>
+      <tbody>${periods.map(r => `<tr>
+          <td><span class="cell-name">${r.label}</span></td>
+          ${metaCells(r, opts)}
+        </tr>`).join('')}
+      <tr style="${TOTAL_ROW_STYLE}">
+        <td>合計</td>
+        ${metaCells(total, opts)}
+      </tr>
+      </tbody>
+    </table>`;
+}
+
+function renderCampaignTable() {
+  const wrap = document.getElementById('campTableWrap');
+  if (!wrap || !lastAccount) return;
+  const camps = lastCampData
+    .filter(r => !campTypeFilter || campType(r.campaign_name) === campTypeFilter)
+    .map(derive)
+    .sort((a,b)=>(b.spend||0)-(a.spend||0));
+  const countEl = document.getElementById('campCount');
+  if (countEl) countEl.textContent = `${camps.length} 個廣告活動`;
+
+  // Unfiltered total uses the account row so reach is de-duplicated; a type-filtered total
+  // can only sum campaigns, so its reach/frequency are left blank rather than overstated.
+  let total;
+  if (campTypeFilter) {
+    total = derive(sumFields(camps, SUM_FIELDS));
+    total.reach = null; total.frequency = null;
+  } else {
+    total = derive(lastAccount);
+  }
+
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>${metaHead('廣告活動')}</tr></thead>
+      <tbody>${camps.map(r => `<tr>
+          <td><span class="cell-name wrap" title="${r.campaign_name}">${typeTag(r.campaign_name)}${r.campaign_name||'—'}</span></td>
+          ${metaCells(r)}
+        </tr>`).join('')}
+      <tr style="${TOTAL_ROW_STYLE}">
+        <td>合計</td>
+        ${metaCells(total)}
+      </tr>
+      </tbody>
+    </table>`;
+}
+
+function renderAdsetTable(adsets) {
+  const wrap = document.getElementById('adsetTableWrap');
+  if (!wrap) return;
+  const sorted = [...adsets].sort((a,b)=>(b.spend||0)-(a.spend||0));
+
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>${metaHead('廣告群組')}</tr></thead>
+      <tbody>${sorted.map(r => `<tr>
+          <td>
+            <span class="cell-name" title="${r.adset_name}">${r.adset_name||'—'}</span>
+            <span class="cell-sub" title="${r.campaign_name}">${typeTag(r.campaign_name)}${r.campaign_name||''}</span>
+          </td>
+          ${metaCells(r)}
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+const AGE_ORDER = ['18-24','25-34','35-44','45-54','55-64','65+'];
+const GENDER_ORDER = ['male','female','unknown'];
+const GENDER_LABELS = { male: '男性', female: '女性', unknown: '不明' };
+
+function renderDemographic(kind) {
+  const wrap = document.getElementById(kind + 'TableWrap');
+  if (!wrap) return;
+  const isAge = kind === 'age';
+  const order = isAge ? AGE_ORDER : GENDER_ORDER;
+  const labelFor = r => isAge ? (r.age || '不明') : (GENDER_LABELS[r.gender] || '不明');
+  const sorted = lastDemo[kind].map(derive).sort((a,b) => {
+    const av = isAge ? a.age : a.gender, bv = isAge ? b.age : b.gender;
+    const ai = order.indexOf(av), bi = order.indexOf(bv);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+  });
+  const total = sorted.reduce((s,r)=>s+(r.spend||0), 0);
+  const maxSpend = Math.max(...sorted.map(r=>r.spend||0), 1);
+  const opts = { withCosts: false };
+
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>${metaHead(isAge ? '年齡' : '性別', { ...opts, withShare: true })}</tr></thead>
+      <tbody>${sorted.map(r => {
+        const pct = total > 0 ? (r.spend/total*100).toFixed(1) : '0';
+        const bw = Math.round((r.spend||0)/maxSpend*80);
+        const cells = metaCells(r, opts).replace('</td>',
+          `</td><td><div class="spend-bar-wrap"><span style="font-size:11px;color:#888">${pct}%</span><div class="spend-bar" style="width:${bw}px"></div></div></td>`);
+        return `<tr>
+          <td><span class="cell-name">${labelFor(r)}</span></td>
+          ${cells}
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+
+  const labels = sorted.map(labelFor);
+  const metricLabel = META_METRICS[metaMetric];
+
+  if (isAge) { if (ageChart) ageChart.destroy(); if (ageComboChart) ageComboChart.destroy(); }
+  else       { if (genderChart) genderChart.destroy(); if (genderComboChart) genderComboChart.destroy(); }
+
+  const doughnut = new Chart(document.getElementById(kind + 'Chart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: sorted.map(r=>r.spend||0), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: 'white' }] },
+    plugins: [PIE_PERCENT_LABELS],
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 6 } }, tooltip: { callbacks: moneyDoughnutTooltipCallbacks() } } }
+  });
+
+  const combo = new Chart(document.getElementById(kind + 'ComboChart'), {
+    data: { labels, datasets: [
+      { type: 'bar',  label: '花費', data: sorted.map(r=>r.spend||0), backgroundColor: 'rgba(200,16,46,0.22)', borderColor: '#c8102e', borderWidth: 1, yAxisID: 'y', borderRadius: 3 },
+      { type: 'line', label: metricLabel, data: sorted.map(r=>r[metaMetric]||0), borderColor: '#fa8c16', borderWidth: 2, pointRadius: 3, tension: 0.3, yAxisID: 'y3' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: { callbacks: comboTooltipCallbacks() } },
+      scales: {
+        x:  { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y:  { position: 'left',  beginAtZero: true, grid: { color: '#f0f2f5' }, ticks: { callback: fmtAxisMoney, font: { size: 10 } } },
+        y3: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { precision: 0, font: { size: 10 } } },
+      }
+    }
+  });
+
+  if (isAge) { ageChart = doughnut; ageComboChart = combo; }
+  else       { genderChart = doughnut; genderComboChart = combo; }
+}
+
+// ── Google Ads ────────────────────────────────────────────────
+// Every enabled conversion action on this account is a form sign-up (SIGNUP category),
+// so Google "conversions" are shown as 名單 / CPL.
+
+function aggregateGoogleRows(rows) {
+  const map = {};
+  for (const r of rows) {
+    const key = r.name || '—';
+    if (!map[key]) map[key] = { name: key, spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+    const g = map[key];
+    g.spend       += r.spend       || 0;
+    g.impressions += r.impressions || 0;
+    g.clicks      += r.clicks      || 0;
+    g.conversions += r.conversions || 0;
+    g.revenue     += r.revenue     || 0;
+  }
+  return Object.values(map)
+    .map(g => finalizeGooglePeriod(g))
+    .sort((a, b) => (b.spend || 0) - (a.spend || 0));
+}
+
+function aggregateGoogleByPeriod(rows, granularity) {
+  const map = {};
+  for (const r of rows) {
+    let key, label;
+    if (granularity === 'day') {
+      key = label = r.date_start;
+    } else {
+      const d = new Date(r.date_start + 'T00:00:00');
+      if (granularity === 'week') {
+        const day = d.getDay();
+        const monday = new Date(d); monday.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+        key = toYMD(monday);
+        label = `${toYMD(monday).slice(5)} ~ ${toYMD(sunday).slice(5)}`;
+      } else {
+        key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        label = key;
+      }
+    }
+    if (!map[key]) map[key] = { label, date_start: key, spend: 0, impressions: 0, clicks: 0, conversions: 0 };
+    const g = map[key];
+    g.spend += r.spend || 0; g.impressions += r.impressions || 0; g.clicks += r.clicks || 0; g.conversions += r.conversions || 0;
+  }
+  return Object.keys(map).sort().map(k => finalizeGooglePeriod(map[k]));
+}
+
+function finalizeGooglePeriod(g) {
+  return { ...g,
+    ctr: g.impressions > 0 ? g.clicks / g.impressions * 100 : 0,
+    cpc: g.clicks > 0 ? g.spend / g.clicks : 0,
+    cpa: g.conversions > 0 ? g.spend / g.conversions : 0,
+  };
+}
+
+function googleCells(r) {
+  return `<td>${fmtM(r.spend)}</td><td>${fmtN(r.impressions)}</td><td>${fmtN(r.clicks)}</td>
+    <td>${fmtP(r.ctr)}</td><td>${fmtCost(r.cpc)}</td><td>${fmtN(r.conversions, r.conversions % 1 ? 1 : 0)}</td><td>${fmtCost(r.cpa)}</td>`;
+}
+const GOOGLE_HEAD = '<th>花費</th><th>曝光</th><th>點擊</th><th>CTR</th><th>CPC</th><th>名單</th><th>CPL</th>';
+
+function renderGoogleTable(wrapId, nameLabel, rows) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  if (!rows.length) { wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#aaa;">此期間沒有資料</div>`; return; }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>${nameLabel}</th>${GOOGLE_HEAD}</tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td><span class="cell-name ${nameLabel === '廣告活動' ? 'wrap' : ''}" title="${r.name}">${r.name || '—'}</span></td>
+        ${googleCells(r)}
+      </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+const GOOGLE_AGE_ORDER = ['18-24','25-34','35-44','45-54','55-64','65+','不明'];
+const GOOGLE_GENDER_ORDER = ['男性','女性','不明'];
+
+function renderGadsSkeleton() {
+  document.getElementById('tab-gads').innerHTML = `
+    <div class="summary-grid" id="gadsSummaryGrid">${loadingCards(6)}</div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>📅 每日趨勢</h3>
+        <div class="chart-wrap"><canvas id="gadsTrendChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>📊 活動花費佔比</h3>
+        <div class="chart-wrap"><canvas id="gadsPieChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>📅 每日成效</h3>
+        <div class="table-header-right">
+          <div class="preset-btns" id="gadsGranBtns">
+            <button class="preset-btn ${gadsDateGranularity==='day'?'active':''}" onclick="setGadsGranularity('day')">日</button>
+            <button class="preset-btn ${gadsDateGranularity==='week'?'active':''}" onclick="setGadsGranularity('week')">週</button>
+            <button class="preset-btn ${gadsDateGranularity==='month'?'active':''}" onclick="setGadsGranularity('month')">月</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap" id="gadsDateTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>🎯 依廣告活動</h3></div>
+      <div class="table-wrap" id="gadsCampaignWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>📝 依標題</h3>
+        <div class="table-header-right">
+          <select class="filter-select" id="gadsHeadlineCampFilter" onchange="renderGadsAssetTable('headline')"><option value="">所有廣告活動</option></select>
+          <span style="font-size:12px;color:#aaa;">依花費顯示前 10 筆</span>
+        </div>
+      </div>
+      <div class="table-wrap" id="gadsHeadlineWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <h3>💬 依文案</h3>
+        <div class="table-header-right">
+          <select class="filter-select" id="gadsDescriptionCampFilter" onchange="renderGadsAssetTable('description')"><option value="">所有廣告活動</option></select>
+          <span style="font-size:12px;color:#aaa;">依花費顯示前 10 筆</span>
+        </div>
+      </div>
+      <div class="table-wrap" id="gadsDescriptionWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="charts-row charts-row-rev">
+      <div class="chart-card">
+        <h3>🎂 花費分佈（年齡）</h3>
+        <div class="chart-wrap"><canvas id="gadsAgeChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>📊 花費／名單（年齡）</h3>
+        <div class="chart-wrap"><canvas id="gadsAgeComboChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>🎂 年齡分析</h3></div>
+      <div class="table-wrap" id="gadsAgeTableWrap">${loadingPlaceholder()}</div>
+    </div>
+    <div class="charts-row charts-row-rev">
+      <div class="chart-card">
+        <h3>🚻 花費分佈（性別）</h3>
+        <div class="chart-wrap"><canvas id="gadsGenderChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>📊 花費／名單（性別）</h3>
+        <div class="chart-wrap"><canvas id="gadsGenderComboChart"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><h3>🚻 性別分析</h3></div>
+      <div class="table-wrap" id="gadsGenderTableWrap">${loadingPlaceholder()}</div>
+    </div>`;
+}
+
+async function fetchGadsData(force = false) {
+  const since = document.getElementById('dateFrom').value;
+  const until = document.getElementById('dateTo').value;
+  renderGadsSkeleton();
+
+  const base = `${API_BASE}/api/google_ads_direct?since=${since}&until=${until}`;
+  const campP  = cachedFetchJson(`${base}&report=campaign`, force);
+  const headP  = cachedFetchJson(`${base}&report=headline`, force);
+  const descP  = cachedFetchJson(`${base}&report=description`, force);
+  const ageP   = cachedFetchJson(`${base}&report=age`, force);
+  const genderP = cachedFetchJson(`${base}&report=gender`, force);
+
+  const prev = prevPeriodRange(since, until);
+  const prevBase = `${API_BASE}/api/google_ads_direct?since=${prev.since}&until=${prev.until}`;
+  const prevCampP = cachedFetchJson(`${prevBase}&report=campaign`, force).catch(() => ({ data: [] }));
+
+  headP.then(j => { lastGadsHeadlineRaw = j.data || []; populateGadsCampFilter('headline'); renderGadsAssetTable('headline'); })
+       .catch(e => showSectionError('gadsHeadlineWrap', e));
+  descP.then(j => { lastGadsDescriptionRaw = j.data || []; populateGadsCampFilter('description'); renderGadsAssetTable('description'); })
+       .catch(e => showSectionError('gadsDescriptionWrap', e));
+  ageP.then(j => renderGadsDemographic('Age', j.data || [])).catch(e => showSectionError('gadsAgeTableWrap', e));
+  genderP.then(j => renderGadsDemographic('Gender', j.data || [])).catch(e => showSectionError('gadsGenderTableWrap', e));
+
+  const [json, prevJson] = await Promise.all([campP, prevCampP]);
+  if (json.errors && json.errors.length) showSectionError('gadsCampaignWrap', new Error(json.errors[0]));
+  lastGadsRaw = json.data || [];
+  const agg = aggregateGoogleRows(lastGadsRaw);
+  const prevAgg = aggregateGoogleRows(prevJson.data || []);
+  renderGadsSummary(agg, since, until, prevAgg);
+  renderGadsCharts(agg);
+  if (!(json.errors && json.errors.length)) renderGoogleTable('gadsCampaignWrap', '廣告活動', agg);
+  renderGadsDateTable();
+}
+
+function populateGadsCampFilter(kind) {
+  const rows = kind === 'headline' ? lastGadsHeadlineRaw : lastGadsDescriptionRaw;
+  const sel = document.getElementById(`gads${kind === 'headline' ? 'Headline' : 'Description'}CampFilter`);
+  if (!sel) return;
+  const camps = [...new Set(rows.map(r => r.campaign_name).filter(Boolean))].sort();
+  sel.innerHTML = `<option value="">所有廣告活動</option>` + camps.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+function renderGadsAssetTable(kind) {
+  const isHeadline = kind === 'headline';
+  const raw = isHeadline ? lastGadsHeadlineRaw : lastGadsDescriptionRaw;
+  const filterSel = document.getElementById(`gads${isHeadline ? 'Headline' : 'Description'}CampFilter`);
+  const campFilter = filterSel ? filterSel.value : '';
+  const filtered = campFilter ? raw.filter(r => r.campaign_name === campFilter) : raw;
+  const agg = aggregateGoogleRows(filtered).slice(0, 10);
+  renderGoogleTable(isHeadline ? 'gadsHeadlineWrap' : 'gadsDescriptionWrap', isHeadline ? '標題' : '文案', agg);
+}
+
+function renderGadsDemographic(kind, rows) {
+  const isAge = kind === 'Age';
+  const order = isAge ? GOOGLE_AGE_ORDER : GOOGLE_GENDER_ORDER;
+  const agg = aggregateGoogleRows(rows); // collapse the per-day rows into one row per bucket
+  const orderedAgg = [...agg].sort((a,b) => {
+    const ai = order.indexOf(a.name), bi = order.indexOf(b.name);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+  });
+  const total = orderedAgg.reduce((s,r)=>s+(r.spend||0), 0);
+  const maxSpend = Math.max(...orderedAgg.map(r=>r.spend||0), 1);
+
+  const wrap = document.getElementById(`gads${kind}TableWrap`);
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>${isAge ? '年齡' : '性別'}</th><th>花費</th><th>佔比</th><th>曝光</th><th>點擊</th><th>CTR</th><th>CPC</th><th>名單</th><th>CPL</th>
+      </tr></thead>
+      <tbody>${orderedAgg.map(r => {
+        const pct = total > 0 ? (r.spend/total*100).toFixed(1) : '0';
+        const bw = Math.round((r.spend||0)/maxSpend*80);
+        return `<tr>
+          <td><span class="cell-name">${r.name}</span></td>
+          <td>${fmtM(r.spend)}</td>
+          <td><div class="spend-bar-wrap"><span style="font-size:11px;color:#888">${pct}%</span><div class="spend-bar" style="width:${bw}px"></div></div></td>
+          <td>${fmtN(r.impressions)}</td>
+          <td>${fmtN(r.clicks)}</td>
+          <td>${fmtP(r.ctr)}</td>
+          <td>${fmtCost(r.cpc)}</td>
+          <td>${fmtN(r.conversions, r.conversions % 1 ? 1 : 0)}</td>
+          <td>${fmtCost(r.cpa)}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`;
+
+  const labels = orderedAgg.map(r => r.name);
+
+  if (isAge) { if (gadsAgeChart) gadsAgeChart.destroy(); if (gadsAgeComboChart) gadsAgeComboChart.destroy(); }
+  else       { if (gadsGenderChart) gadsGenderChart.destroy(); if (gadsGenderComboChart) gadsGenderComboChart.destroy(); }
+
+  const doughnut = new Chart(document.getElementById(`gads${kind}Chart`), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: orderedAgg.map(r=>r.spend||0), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: 'white' }] },
+    plugins: [PIE_PERCENT_LABELS],
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 6 } }, tooltip: { callbacks: moneyDoughnutTooltipCallbacks() } } }
+  });
+
+  const combo = new Chart(document.getElementById(`gads${kind}ComboChart`), {
+    data: { labels, datasets: [
+      { type: 'bar',  label: '花費', data: orderedAgg.map(r=>r.spend||0), backgroundColor: 'rgba(200,16,46,0.22)', borderColor: '#c8102e', borderWidth: 1, yAxisID: 'y', borderRadius: 3 },
+      { type: 'line', label: '名單', data: orderedAgg.map(r=>r.conversions||0), borderColor: '#fa8c16', borderWidth: 2, pointRadius: 3, tension: 0.3, yAxisID: 'y3' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: { callbacks: comboTooltipCallbacks() } },
+      scales: {
+        x:  { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y:  { position: 'left',  beginAtZero: true, grid: { color: '#f0f2f5' }, ticks: { callback: fmtAxisMoney, font: { size: 10 } } },
+        y3: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { precision: 0, font: { size: 10 } } },
+      }
+    }
+  });
+
+  if (isAge) { gadsAgeChart = doughnut; gadsAgeComboChart = combo; }
+  else       { gadsGenderChart = doughnut; gadsGenderComboChart = combo; }
+}
+
+const GADS_TOTAL_FIELDS = ['spend', 'impressions', 'clicks', 'conversions'];
+
+function renderGadsSummary(agg, since, until, prevAgg = []) {
+  const t = finalizeGooglePeriod(sumFields(agg, GADS_TOTAL_FIELDS));
+  const p = finalizeGooglePeriod(sumFields(prevAgg, GADS_TOTAL_FIELDS));
+
+  document.getElementById('gadsSummaryGrid').innerHTML = `
+    <div class="sc c-red"><div class="lbl">花費</div><div class="val">${fmtM(t.spend)}</div><div class="sub">${since} ～ ${until}</div>${deltaHtml(t.spend, p.spend)}</div>
+    <div class="sc"><div class="lbl">曝光</div><div class="val">${fmtN(t.impressions)}</div>${deltaHtml(t.impressions, p.impressions)}</div>
+    <div class="sc c-purple"><div class="lbl">點擊</div><div class="val">${fmtN(t.clicks)}</div><div class="sub">CTR ${fmtP(t.ctr)}</div>${deltaHtml(t.clicks, p.clicks)}</div>
+    <div class="sc"><div class="lbl">CPC</div><div class="val">${fmtCost(t.cpc)}</div>${deltaHtml(t.cpc, p.cpc, true)}</div>
+    <div class="sc c-teal"><div class="lbl">名單</div><div class="val">${fmtN(t.conversions, t.conversions % 1 ? 1 : 0)}</div><div class="sub">表單送出等轉換</div>${deltaHtml(t.conversions, p.conversions)}</div>
+    <div class="sc"><div class="lbl">CPL</div><div class="val">${fmtCost(t.cpa)}</div>${deltaHtml(t.cpa, p.cpa, true)}</div>`;
+}
+
+function renderGadsCharts(agg) {
+  if (gadsPieChart) gadsPieChart.destroy();
+  gadsPieChart = new Chart(document.getElementById('gadsPieChart'), {
+    type: 'doughnut',
+    data: { labels: agg.map(r => r.name.slice(0,22)), datasets: [{ data: agg.map(r => r.spend || 0), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: 'white' }] },
+    plugins: [PIE_PERCENT_LABELS],
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 6 } }, tooltip: { callbacks: moneyDoughnutTooltipCallbacks() } } }
+  });
+
+  if (gadsTrendChart) gadsTrendChart.destroy();
+  const daily = aggregateGoogleByPeriod(lastGadsRaw, 'day');
+  gadsTrendChart = new Chart(document.getElementById('gadsTrendChart'), {
+    data: { labels: daily.map(r => r.date_start), datasets: [
+      { type: 'bar',  label: '花費', data: daily.map(r => r.spend || 0), backgroundColor: 'rgba(200,16,46,0.22)', borderColor: '#c8102e', borderWidth: 1, yAxisID: 'y', borderRadius: 3 },
+      { type: 'line', label: '點擊', data: daily.map(r => r.clicks || 0), borderColor: '#722ed1', borderWidth: 2, pointRadius: 2, tension: 0.3, yAxisID: 'y3' },
+      { type: 'line', label: '名單', data: daily.map(r => r.conversions || 0), borderColor: '#fa8c16', borderWidth: 2, pointRadius: 2, tension: 0.3, yAxisID: 'y3' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 11 }, boxWidth: 12 } }, tooltip: { callbacks: comboTooltipCallbacks() } },
+      scales: {
+        x:  { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
+        y:  { position: 'left',  beginAtZero: true, grid: { color: '#f0f2f5' }, ticks: { callback: fmtAxisMoney, font: { size: 10 } } },
+        y3: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { precision: 0, font: { size: 10 } } },
+      }
+    }
+  });
+}
+
+function setGadsGranularity(g) {
+  gadsDateGranularity = g;
+  document.querySelectorAll('#gadsGranBtns .preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderGadsDateTable();
+}
+
+function renderGadsDateTable() {
+  const wrap = document.getElementById('gadsDateTableWrap');
+  if (!wrap) return;
+  const periods = aggregateGoogleByPeriod(lastGadsRaw, gadsDateGranularity);
+  const total = finalizeGooglePeriod(sumFields(periods, GADS_TOTAL_FIELDS));
+
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>日期</th>${GOOGLE_HEAD}</tr></thead>
+      <tbody>${periods.map(r => `<tr>
+        <td><span class="cell-name">${r.label}</span></td>
+        ${googleCells(r)}
+      </tr>`).join('')}
+      <tr style="${TOTAL_ROW_STYLE}">
+        <td>合計</td>
+        ${googleCells(total)}
+      </tr>
+      </tbody>
+    </table>`;
+}
+
+</script>
+</body>
+</html>
