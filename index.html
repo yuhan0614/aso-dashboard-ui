@@ -98,6 +98,8 @@
   .subtab-btn { padding: 7px 18px; border: 1.5px solid #e4e6ea; border-radius: 8px; background: white; font-size: 13px; font-weight: 600; color: #555; cursor: pointer; transition: all 0.15s; }
   .subtab-btn:hover { border-color: #c8102e; color: #c8102e; }
   .subtab-btn.active { background: #c8102e; border-color: #c8102e; color: white; }
+  .promo-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 16px; }
+  .promo-bar .promo-lbl { font-size: 12px; color: #888; font-weight: 600; margin-right: 4px; }
   .meta-view { display: none; }
   .meta-view.active { display: block; }
   .notice { background: #fffbe6; border: 1px solid #ffe58f; border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #8c6d1f; margin-bottom: 16px; }
@@ -220,8 +222,8 @@ const META_VIEWS = {
     label: '總覽', objective: '', mixed: true, metric: 'leads',
     metrics: ['leads', 'thruplay', 'link_clicks', 'impressions'],
     cards: [['整體成效', ['spend','impressions','reach','cpm','link_clicks','cplc','leads','cpl_leads']],
-            ['影片與互動', ['thruplay','cpv_engagement','video_2s','video_p25','video_p50','video_p100','lpv','engagement']]],
-    cols: ['spend','impressions','reach','frequency','cpm','link_clicks','ctr','cplc','thruplay','cpv','leads','cpl'],
+            ['影片與互動', ['thruplay','cpv_engagement','video_2s','cpv2s_engagement','video_p25','video_p50','video_p100','lpv','engagement']]],
+    cols: ['spend','impressions','reach','frequency','cpm','link_clicks','ctr','cplc','video_2s','cpv2s','thruplay','cpv','leads','cpl'],
   },
   leads: {
     label: '潛在顧客', objective: 'OUTCOME_LEADS', metric: 'leads',
@@ -240,16 +242,16 @@ const META_VIEWS = {
   engagement: {
     label: '互動', objective: 'OUTCOME_ENGAGEMENT', metric: 'thruplay',
     metrics: ['thruplay', 'video_2s', 'impressions', 'link_clicks'],
-    cards: [['觀看成效', ['spend','thruplay','cpv','video_2s','video_p25','video_p50','video_p100']],
-            ['曝光與互動', ['impressions','reach','cpm','engagement','link_clicks']]],
-    cols: ['spend','impressions','reach','frequency','cpm','video_2s','thruplay','cpv','video_p100','post_engagement','link_clicks'],
+    cards: [['觀看成效', ['spend','video_2s','cpv2s','thruplay','cpv','video_p25','video_p50','video_p100']],
+            ['曝光與互動', ['impressions','reach','cpm','engagement','link_clicks','cplc']]],
+    cols: ['spend','impressions','reach','frequency','cpm','video_2s','cpv2s','thruplay','cpv','video_p100','post_engagement','link_clicks','ctr','cplc'],
   },
   awareness: {
     label: '知名度', objective: 'OUTCOME_AWARENESS', optional: true, metric: 'impressions',
     metrics: ['impressions', 'thruplay', 'link_clicks'],
     cards: [['曝光成效', ['spend','impressions','reach','cpm']],
-            ['影片與互動', ['thruplay','video_2s','video_p100','engagement','link_clicks']]],
-    cols: ['spend','impressions','reach','frequency','cpm','video_2s','thruplay','link_clicks','ctr','post_engagement'],
+            ['影片與互動', ['thruplay','video_2s','video_p100','engagement','link_clicks','cplc']]],
+    cols: ['spend','impressions','reach','frequency','cpm','video_2s','thruplay','link_clicks','ctr','cplc','post_engagement'],
   },
   sales: {
     label: '銷售', objective: 'OUTCOME_SALES', optional: true, metric: 'link_clicks',
@@ -263,7 +265,30 @@ Object.entries(META_VIEWS).forEach(([key, v]) => Object.assign(v, {
   key, seq: 0, loadedKey: null, forcePending: false, charts: {},
   acct: null, prevAcct: null, camps: [], prevCamps: [], trend: [], campTrend: [], adsets: [],
   demo: { age: [], gender: [] }, dateGran: 'day', dateCampFilter: '', adsetCampFilter: '', objFilter: '',
+  promo: '', promoGroups: {},
 }));
+
+// Campaign group ("活動") from a campaign name: drop the leading date segments and cut at the
+// first audience/budget/buying token, so 2026_10/9-11/30_足壓測量_INT_$123,710_CPL$250 and its
+// _ASC_ sibling both become 足壓測量. Names with nothing left (e.g. 2026_1007-1018_$50,000_CPV$0.8)
+// fall back to the full name, i.e. their own group.
+function promoOf(name) {
+  const parts = (name || '').split('_');
+  let i = 0;
+  while (i < parts.length && /^[\d\/\-]+$/.test(parts[i])) i++;
+  const kept = [];
+  for (; i < parts.length; i++) {
+    const p = parts[i].trim();
+    if (/^(INT|ASC|ADV\+?|LAL.*|RT|A\+)$/i.test(p) || p.startsWith('$') || /^CP[A-Z]/i.test(p)) break;
+    kept.push(p);
+  }
+  return kept.join('_') || name || '—';
+}
+function groupPromos(camps) {
+  const groups = {};
+  camps.forEach(r => { const g = promoOf(r.campaign_name); (groups[g] = groups[g] || []).push(r.campaign_id); });
+  return groups;
+}
 const el = (v, id) => document.getElementById(`${v.key}-${id}`);
 
 function switchTab(name, btn) {
@@ -470,7 +495,7 @@ function showSectionError(wrapId, e) {
 async function loadMetaView(v) {
   const since = document.getElementById('dateFrom').value;
   const until = document.getElementById('dateTo').value;
-  const rangeKey = `${since}|${until}`;
+  const rangeKey = `${since}|${until}|${v.promo}`;
   const force = v.forcePending;
   if (!force && v.loadedKey === rangeKey) return;
   v.forcePending = false;
@@ -482,7 +507,22 @@ async function loadMetaView(v) {
   renderViewSkeleton(v);
 
   const obj = v.objective ? `&objective=${v.objective}` : '';
-  const base = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}${obj}`;
+  let base = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${since}&until=${until}${obj}`;
+  let campIds = '';
+  if (!v.mixed && v.promo) {
+    // Resolve the group to this range's campaign IDs first (a group can gain campaigns over time).
+    const allCamps = await cachedFetchJson(`${base}&level=campaign`, force);
+    if (!live()) return;
+    v.promoGroups = groupPromos(allCamps.data || []);
+    const ids = v.promoGroups[v.promo];
+    if (ids) {
+      campIds = `&campaign_ids=${ids.join(',')}`;
+    } else {
+      v.promo = '';  // group didn't run in this range — fall back to all campaigns
+      v.loadedKey = `${since}|${until}|`;
+    }
+    base += campIds;
+  }
   const acctP   = cachedFetchJson(`${base}&level=account`, force);
   const campP   = cachedFetchJson(`${base}&level=campaign`, force);
   const trendP  = cachedFetchJson(`${base}&level=account&time_increment=daily`, force);
@@ -492,7 +532,7 @@ async function loadMetaView(v) {
   const genderP = cachedFetchJson(`${base}&level=account&breakdowns=gender`, force);
 
   const prev = prevPeriodRange(since, until);
-  const prevBase = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${prev.since}&until=${prev.until}${obj}`;
+  const prevBase = `${API_BASE}/api/insights?accounts=${ACCOUNT_ID}&since=${prev.since}&until=${prev.until}${obj}${campIds}`;
   const prevAcctP = cachedFetchJson(`${prevBase}&level=account`, force).catch(() => ({ data: [] }));
   const prevCampP = cachedFetchJson(`${prevBase}&level=campaign`, force).catch(() => ({ data: [] }));
 
@@ -512,6 +552,8 @@ async function loadMetaView(v) {
   v.acct      = (acctJson.data || [])[0] || emptyRow();
   v.prevAcct  = (prevAcctJson.data || [])[0] || emptyRow();
 
+  if (!v.mixed && !v.promo) v.promoGroups = groupPromos(v.camps);
+  renderPromoBar(v);
   v.dateCampFilter = populateCampFilter(el(v, 'dateCampFilter'), v.dateCampFilter, v.camps);
   if (v.mixed) populateObjFilter(v);
   renderCore(v);
@@ -549,6 +591,7 @@ function derive(g) {
     cplc:  g.link_clicks > 0 ? g.spend / g.link_clicks : 0,
     cpm:   g.impressions > 0 ? g.spend / g.impressions * 1000 : 0,
     cpv:   g.thruplay > 0 ? g.spend / g.thruplay : 0,
+    cpv2s: g.video_2s > 0 ? g.spend / g.video_2s : 0,
     cpl:   g.leads > 0 ? g.spend / g.leads : 0,
     cplpv: g.landing_page_view > 0 ? g.spend / g.landing_page_view : 0,
     frequency: g.reach > 0 ? g.impressions / g.reach : 0,
@@ -571,7 +614,7 @@ const CARDS = {
   reach:       (t,p) => card('觸及人數', fmtWan(t.reach), `頻率 ${t.frequency.toFixed(2)}`, deltaHtml(t.reach, p.reach), 'c-orange'),
   cpm:         (t,p) => card('CPM', fmtCost(t.cpm), '每千次曝光成本', deltaHtml(t.cpm, p.cpm, true)),
   link_clicks: (t,p) => card('連結點擊', fmtInt(t.link_clicks), `CTR ${fmtP(t.ctr)}`, deltaHtml(t.link_clicks, p.link_clicks), 'c-purple'),
-  cplc:        (t,p) => card('CPC', fmtCost(t.cplc), '花費 / 連結點擊', deltaHtml(t.cplc, p.cplc, true)),
+  cplc:        (t,p) => card('CPLC', fmtCost(t.cplc), '花費 / 連結點擊', deltaHtml(t.cplc, p.cplc, true)),
   lpv:         (t,p) => card('到達頁瀏覽', fmtInt(t.landing_page_view), `連結點擊的 ${pctOf(t.landing_page_view, t.link_clicks)}`, deltaHtml(t.landing_page_view, p.landing_page_view), 'c-green'),
   cplpv:       (t,p) => card('到達頁成本', fmtCost(t.cplpv), '花費 / 到達頁瀏覽', deltaHtml(t.cplpv, p.cplpv, true)),
   leads:       (t,p) => card('名單', fmtInt(t.leads), 'Leadbutton 像素事件', deltaHtml(t.leads, p.leads), 'c-teal'),
@@ -582,10 +625,15 @@ const CARDS = {
     return card('CPL（潛在顧客活動）', fmtCost(c.cost), `${fmtM(c.spend)} / ${fmtInt(c.count)} 筆`, deltaHtml(c.cost, pc.cost, true));
   },
   thruplay:    (t,p) => card('ThruPlay', fmtInt(t.thruplay), '看完或看滿 15 秒', deltaHtml(t.thruplay, p.thruplay), 'c-pink'),
-  cpv:         (t,p) => card('CPV', fmtM2(t.cpv), '花費 / ThruPlay', deltaHtml(t.cpv, p.cpv, true)),
+  cpv:         (t,p) => card('CPV（ThruPlay）', fmtM2(t.cpv), '花費 / ThruPlay', deltaHtml(t.cpv, p.cpv, true)),
+  cpv2s:       (t,p) => card('CPV（2 秒觀看）', fmtM2(t.cpv2s), '花費 / 2 秒連續觀看', deltaHtml(t.cpv2s, p.cpv2s, true)),
+  cpv2s_engagement: (t,p,v) => {
+    const c = scopedCost(v.camps, 'OUTCOME_ENGAGEMENT', 'video_2s'), pc = scopedCost(v.prevCamps, 'OUTCOME_ENGAGEMENT', 'video_2s');
+    return card('CPV 2 秒（互動活動）', fmtM2(c.cost), `${fmtM(c.spend)} / ${fmtInt(c.count)} 次`, deltaHtml(c.cost, pc.cost, true));
+  },
   cpv_engagement: (t,p,v) => {
     const c = scopedCost(v.camps, 'OUTCOME_ENGAGEMENT', 'thruplay'), pc = scopedCost(v.prevCamps, 'OUTCOME_ENGAGEMENT', 'thruplay');
-    return card('CPV（互動活動）', fmtM2(c.cost), `${fmtM(c.spend)} / ${fmtInt(c.count)} 次`, deltaHtml(c.cost, pc.cost, true));
+    return card('CPV ThruPlay（互動活動）', fmtM2(c.cost), `${fmtM(c.spend)} / ${fmtInt(c.count)} 次`, deltaHtml(c.cost, pc.cost, true));
   },
   video_2s:    (t,p) => card('2 秒連續觀看', fmtInt(t.video_2s), '', deltaHtml(t.video_2s, p.video_2s), 'c-pink'),
   video_p25:   (t) => card('影片觀看 25%', fmtInt(t.video_p25), `2 秒觀看的 ${pctOf(t.video_p25, t.video_2s)}`),
@@ -604,12 +652,13 @@ const COLS = {
   cpm:               { h: 'CPM',             f: r => fmtCost(r.cpm) },
   link_clicks:       { h: '連結<br>點擊',     f: r => fmtN(r.link_clicks) },
   ctr:               { h: 'CTR',             f: r => fmtP(r.ctr) },
-  cplc:              { h: 'CPC',             f: r => fmtCost(r.cplc) },
+  cplc:              { h: 'CPLC',            f: r => fmtCost(r.cplc) },
   landing_page_view: { h: '到達頁<br>瀏覽',   f: r => fmtN(r.landing_page_view) },
   cplpv:             { h: '到達頁<br>成本',   f: r => fmtCost(r.cplpv), scoped: true },
   video_2s:          { h: '2 秒<br>連續觀看', f: r => fmtN(r.video_2s) },
   thruplay:          { h: 'ThruPlay',        f: r => fmtN(r.thruplay) },
-  cpv:               { h: 'CPV',             f: r => fmtM2(r.cpv), scoped: true },
+  cpv:               { h: 'CPV<br>ThruPlay', f: r => fmtM2(r.cpv), scoped: true },
+  cpv2s:             { h: 'CPV<br>2 秒',      f: r => fmtM2(r.cpv2s), scoped: true },
   video_p100:        { h: '影片<br>看完',     f: r => fmtN(r.video_p100) },
   post_engagement:   { h: '貼文<br>互動',     f: r => fmtN(r.post_engagement) },
   leads:             { h: '名單',            f: r => fmtN(r.leads) },
@@ -653,6 +702,7 @@ function renderViewSkeleton(v) {
     </div>`;
 
   document.getElementById(`mv-${k}`).innerHTML = `
+    <div class="promo-bar" id="${k}-promos"></div>
     <div id="${k}-notice"></div>
     ${v.cards.map(([title, ids], i) => `
       <div class="section-label">${title}</div>
@@ -711,7 +761,7 @@ function renderViewSkeleton(v) {
 function renderCore(v) {
   const t = derive(v.acct), p = derive(v.prevAcct);
   el(v, 'notice').innerHTML = v.camps.length ? '' :
-    `<div class="notice">此期間沒有「${v.label}」目標的活動投遞。</div>`;
+    `<div class="notice">此期間沒有「${v.promo || v.label}」的活動投遞。</div>`;
   v.cards.forEach(([, ids], i) => {
     el(v, i ? 'cards2' : 'summaryGrid').innerHTML = ids.map(id => CARDS[id](t, p, v)).join('');
   });
@@ -741,6 +791,24 @@ function renderTrendChart(v) {
       }
     }
   });
+}
+
+// 活動 selector inside an objective tab — only shown when the tab has 2+ campaign groups.
+function renderPromoBar(v) {
+  const bar = el(v, 'promos');
+  if (!bar) return;
+  const names = Object.keys(v.promoGroups).sort();
+  if (v.mixed || (names.length < 2 && !v.promo)) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span class="promo-lbl">活動</span>` +
+    [['', '全部活動'], ...names.map(n => [n, n])].map(([val, label]) =>
+      `<button class="preset-btn ${val === v.promo ? 'active' : ''}" data-promo="${val.replace(/"/g, '&quot;')}"
+        onclick="setPromo('${v.key}', this.dataset.promo)">${label}${val ? ` <span style="opacity:.6">(${v.promoGroups[val].length})</span>` : ''}</button>`).join('');
+}
+function setPromo(key, promo) {
+  const v = META_VIEWS[key];
+  v.promo = promo;
+  v.dateCampFilter = ''; v.adsetCampFilter = '';
+  loadMetaView(v).then(resizeCharts).catch(e => showSectionError(`${key}-summaryGrid`, e));
 }
 
 function setMetaMetric(key, metric) {
@@ -806,15 +874,21 @@ function renderAdsetView(v) {
   if (!wrap) return;
   const cols = tableCols(v, 'adset');
   const sorted = scoped.map(derive).sort((a,b)=>(b.spend||0)-(a.spend||0));
+  // Share is of the adsets currently listed (i.e. within the selected campaign, if any).
+  const totalSpend = sorted.reduce((s, r) => s + (r.spend || 0), 0);
+  const maxSpend = Math.max(...sorted.map(r => r.spend || 0), 1);
+  const shareCell = r => `<td><div class="spend-bar-wrap"><span style="font-size:11px;color:#888">${
+    totalSpend > 0 ? (r.spend / totalSpend * 100).toFixed(1) : '0'}%</span><div class="spend-bar" style="width:${
+    Math.round((r.spend || 0) / maxSpend * 80)}px"></div></div></td>`;
   wrap.innerHTML = `
     <table>
-      <thead><tr>${headHtml('廣告群組', cols)}</tr></thead>
+      <thead><tr>${headHtml('廣告群組', cols, true)}</tr></thead>
       <tbody>${sorted.map(r => `<tr>
           <td>
             <span class="cell-name" title="${r.adset_name}">${r.adset_name||'—'}</span>
             <span class="cell-sub" title="${r.campaign_name}">${v.mixed ? objTag(r.objective) : ''}${r.campaign_name||''}</span>
           </td>
-          ${cellsHtml(r, cols)}
+          ${cellsHtml(r, cols, shareCell(r))}
         </tr>`).join('')}
       </tbody>
     </table>`;
