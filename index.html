@@ -173,6 +173,9 @@
 <script>
 const API_BASE = 'https://aso-api.fly.dev';
 const ACCOUNT_ID = '1844604356070474';
+// Bump the version whenever the API's row shape changes, so tabs left open across a deploy
+// don't keep serving rows cached before the change (v2: campaign rows gained `objective`).
+const CACHE_PREFIX = 'asoCache:v2:';
 let gadsTrendChart, gadsPieChart, gadsAgeChart, gadsAgeComboChart, gadsGenderChart, gadsGenderComboChart;
 let gadsDateGranularity = 'day';
 let lastGadsRaw = [];
@@ -446,9 +449,6 @@ function cacheGet(key) {
 function cacheSet(key, val) {
   try { sessionStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
 }
-// Bump the version whenever the API's row shape changes, so tabs left open across a deploy
-// don't keep serving rows cached before the change (v2: campaign rows gained `objective`).
-const CACHE_PREFIX = 'asoCache:v2:';
 async function cachedFetchJson(url, force) {
   if (!force) {
     const cached = cacheGet(CACHE_PREFIX + url);
