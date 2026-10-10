@@ -446,14 +446,17 @@ function cacheGet(key) {
 function cacheSet(key, val) {
   try { sessionStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
 }
+// Bump the version whenever the API's row shape changes, so tabs left open across a deploy
+// don't keep serving rows cached before the change (v2: campaign rows gained `objective`).
+const CACHE_PREFIX = 'asoCache:v2:';
 async function cachedFetchJson(url, force) {
   if (!force) {
-    const cached = cacheGet('asoCache:' + url);
+    const cached = cacheGet(CACHE_PREFIX + url);
     if (cached) return cached;
   }
   const res = await fetch(force ? url + '&force=true' : url);
   const json = await res.json();
-  cacheSet('asoCache:' + url, json);
+  cacheSet(CACHE_PREFIX + url, json);
   return json;
 }
 
